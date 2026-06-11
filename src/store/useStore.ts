@@ -3,7 +3,6 @@ import type {
   User,
   Booking,
   Cruise,
-  CruiseSchedule,
   Guide,
   GuideSchedule,
   WorkOrder,
@@ -17,6 +16,15 @@ import type {
   Warning,
   FlowData,
 } from '../data/types';
+
+export interface CruiseSchedule {
+  id: string;
+  cruiseId: string;
+  cruiseName: string;
+  departureTime: string;
+  status: 'scheduled' | 'departed' | 'cancelled';
+  initialPassengers?: number;
+}
 import {
   bookings as initialBookings,
   cruises as initialCruises,
@@ -42,6 +50,8 @@ export interface BookingWithServices extends Booking {
   guideScheduleId?: string;
   cruiseScheduleId?: string;
   passengerCount?: number;
+  guideName?: string;
+  cruiseName?: string;
 }
 
 export interface CruiseReservation {
@@ -55,6 +65,7 @@ export interface CruiseReservation {
 export interface RecentlyProcessed {
   id: string;
   type: 'complaint' | 'lostitem' | 'broadcast' | 'booking' | 'workorder';
+  recordId: string;
   content: string;
   timestamp: string;
   action: string;
@@ -97,10 +108,13 @@ interface AppState {
   rescheduleReservations: (scheduleId: string) => void;
 
   addCruiseSchedule: (schedule: Omit<CruiseSchedule, 'id'>) => void;
-  updateCruiseSchedule: (id: string, departureTime: string) => void;
+  updateCruiseSchedule: (id: string, departureTime: string, passengerCount?: number) => void;
   cancelCruiseSchedule: (id: string) => void;
   addCruiseReservation: (reservation: Omit<CruiseReservation, 'id'>) => void;
   getCruiseAvailableSeats: (scheduleId: string) => { total: number; reserved: number; available: number };
+  getCruiseTotalCapacity: (cruiseId: string) => { total: number; reserved: number; available: number };
+  dispatchBookingGuide: (bookingId: string, guideId: string, guideName: string) => void;
+  dispatchBookingCruise: (bookingId: string, scheduleId: string, cruiseName: string, passengerCount: number) => void;
 
   addGuideSchedule: (schedule: Omit<GuideSchedule, 'id'>) => void;
   updateGuideStatus: (id: string, status: Guide['status']) => void;
@@ -176,13 +190,39 @@ export const useStore = create<AppState>((set, get) => ({
     ),
   })),
 
-  addCruiseSchedule: (schedule) => set((state) => ({
-    cruiseSchedules: [...state.cruiseSchedules, { ...schedule, id: generateId() }],
-  })),
+  addCruiseSchedule: (schedule) => {
+    const state = get();
+    const newScheduleId = generateId();
+    const newReservations = [];
+    if (schedule.initialPassengers && schedule.initialPassengers > 0) {
+      newReservations.push({
+        id: generateId(),
+        scheduleId: newScheduleId,
+        passengerCount: schedule.initialPassengers,
+        status: 'confirmed' as const,
+      });
+    }
+    set((state) => ({
+      cruiseSchedules: [...state.cruiseSchedules, { ...schedule, id: newScheduleId, initialPassengers: undefined }],
+      cruiseReservations: [...state.cruiseReservations, ...newReservations],
+    }));
+  },
 
-  updateCruiseSchedule: (id, departureTime) => set((state) => ({
-    cruiseSchedules: state.cruiseSchedules.map(s => s.id === id ? { ...s, departureTime } : s),
-  })),
+  updateCruiseSchedule: (id, departureTime, passengerCount) => set((state) => {
+    const newReservations = [];
+    if (passengerCount && passengerCount > 0) {
+      newReservations.push({
+        id: generateId(),
+        scheduleId: id,
+        passengerCount,
+        status: 'confirmed' as const,
+      });
+    }
+    return {
+      cruiseSchedules: state.cruiseSchedules.map(s => s.id === id ? { ...s, departureTime } : s),
+      cruiseReservations: [...state.cruiseReservations, ...newReservations],
+    };
+  }),
 
   cancelCruiseSchedule: (id) => set((state) => {
     const schedule = state.cruiseSchedules.find(s => s.id === id);
@@ -212,6 +252,19 @@ export const useStore = create<AppState>((set, get) => ({
     return { total, reserved, available: total - reserved };
   },
 
+  getCruiseTotalCapacity: (cruiseId) => {
+    const state = get();
+    const cruise = state.cruises.find(c => c.id === cruiseId);
+    const total = cruise?.capacity || 0;
+    const schedules = state.cruiseSchedules.filter(s => s.cruiseId === cruiseId);
+    const reserved = schedules.reduce((sum, schedule) => {
+      return sum + state.cruiseReservations
+        .filter(r => r.scheduleId === schedule.id && r.status === 'confirmed')
+        .reduce((s, r) => s + r.passengerCount, 0);
+    }, 0);
+    return { total, reserved, available: total - reserved };
+  },
+
   addGuideSchedule: (schedule) => set((state) => ({
     guideSchedules: [...state.guideSchedules, { ...schedule, id: generateId() }],
   })),
@@ -230,6 +283,61 @@ export const useStore = create<AppState>((set, get) => ({
     ),
   })),
 
+  dispatchBookingGuide: (bookingId, guideId, guideName) => {
+    const state = get();
+    const booking = state.bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    
+    const scheduleId = generateId();
+    const newSchedule = {
+      id: scheduleId,
+      guideId,
+      guideName,
+      date: booking.visitDate,
+      timeSlot: booking.timeSlot,
+    };
+    
+    get().addRecentlyProcessed({
+      type: 'booking',
+      recordId: bookingId,
+      content: `预约-${booking.entryPoint}-${guideName}讲解员`,
+      action: '已分派讲解',
+    });
+    
+    set((state) => ({
+      guideSchedules: [...state.guideSchedules, { ...newSchedule, id: scheduleId }],
+      bookings: state.bookings.map(b => 
+        b.id === bookingId ? { ...b, hasGuideService: true, guideScheduleId: scheduleId, guideName } : b
+      ),
+    }));
+  },
+
+  dispatchBookingCruise: (bookingId, scheduleId, cruiseName, passengerCount) => {
+    const state = get();
+    const booking = state.bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    
+    get().addRecentlyProcessed({
+      type: 'booking',
+      recordId: bookingId,
+      content: `预约-${booking.entryPoint}-${cruiseName}${passengerCount}人`,
+      action: '已分派游船',
+    });
+    
+    set((state) => ({
+      cruiseReservations: [...state.cruiseReservations, {
+        id: generateId(),
+        scheduleId,
+        passengerCount,
+        bookingId,
+        status: 'confirmed' as const,
+      }],
+      bookings: state.bookings.map(b => 
+        b.id === bookingId ? { ...b, hasCruiseService: true, cruiseScheduleId: scheduleId, cruiseName } : b
+      ),
+    }));
+  },
+
   createWorkOrder: (order) => set((state) => ({
     workOrders: [...state.workOrders, { ...order, id: generateId(), createdAt: new Date().toLocaleString() }],
   })),
@@ -244,6 +352,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (workOrder) {
       get().addRecentlyProcessed({
         type: 'workorder',
+        recordId: id,
         content: `${workOrder.type === 'cleaning' ? '清洁' : workOrder.type === 'inspection' ? '巡检' : '维修'}工单 - ${workOrder.location}`,
         action: '完成',
       });
@@ -263,7 +372,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (complaint) {
       get().addRecentlyProcessed({
         type: 'complaint',
-        content: `投诉 - ${complaint.content.substring(0, 20)}...`,
+        recordId: id,
+        content: `投诉 - ${complaint.content}`,
         action: '分派给' + assigneeName,
       });
     }
@@ -278,7 +388,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (complaint) {
       get().addRecentlyProcessed({
         type: 'complaint',
-        content: `投诉 - ${complaint.content.substring(0, 20)}...`,
+        recordId: id,
+        content: `投诉 - ${complaint.content}`,
         action: '已解决',
       });
     }
@@ -297,7 +408,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (item) {
       get().addRecentlyProcessed({
         type: 'lostitem',
-        content: `遗失物品 - ${item.name}`,
+        recordId: id,
+        content: `遗失物品 - ${item.name}: ${item.description}`,
         action: '已认领',
       });
     }
@@ -307,13 +419,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   addBroadcast: (broadcast) => {
+    const broadcastId = generateId();
     get().addRecentlyProcessed({
       type: 'broadcast',
-      content: `广播 - ${broadcast.content.substring(0, 20)}...`,
+      recordId: broadcastId,
+      content: `广播 - ${broadcast.content}`,
       action: '已发布',
     });
     set((state) => ({
-      broadcasts: [...state.broadcasts, { ...broadcast, id: generateId() }],
+      broadcasts: [...state.broadcasts, { ...broadcast, id: broadcastId }],
     }));
   },
 
@@ -390,7 +504,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (state.user.role === 'admin' || state.userArea === 'all') {
       return state.complaints;
     }
-    return state.complaints;
+    return state.complaints.filter(c => c.userName.includes(state.userArea));
   },
 
   getFilteredWorkOrders: () => {
@@ -398,7 +512,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (state.user.role === 'admin' || state.userArea === 'all') {
       return state.workOrders;
     }
-    return state.workOrders;
+    return state.workOrders.filter(w => w.location.includes(state.userArea));
   },
 
   getFilteredBookings: () => {
@@ -406,7 +520,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (state.user.role === 'admin' || state.userArea === 'all') {
       return state.bookings;
     }
-    return state.bookings;
+    return state.bookings.filter(b => b.entryPoint.includes(state.userArea));
   },
 
   getPendingDispatchList: () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { MessageCircle, Package, Radio, Plus, CheckCircle, Edit2, Clock, Sparkles, X } from 'lucide-react';
 import { Badge, Table, Modal } from '../components/Common';
 import { useStore } from '../store/useStore';
@@ -9,7 +9,7 @@ export default function FeedbackManagement() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningId, setAssigningId] = useState('');
   const [modalType, setModalType] = useState<'complaint' | 'lostitem' | 'broadcast'>('complaint');
-  const [recentlyHighlighted, setRecentlyHighlighted] = useState<string | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     userName: '',
     content: '',
@@ -21,46 +21,35 @@ export default function FeedbackManagement() {
     assigneeName: '',
   });
 
-  const { complaints, lostItems, broadcasts, recentlyProcessed, addComplaint, assignComplaint, resolveComplaint, addLostItem, claimLostItem, addBroadcast, clearRecentlyProcessed } = useStore();
+  const { 
+    complaints, lostItems, broadcasts, recentlyProcessed, 
+    addComplaint, assignComplaint, resolveComplaint, addLostItem, claimLostItem, addBroadcast, clearRecentlyProcessed 
+  } = useStore();
 
   useEffect(() => {
     if (recentlyProcessed.length > 0) {
       const latest = recentlyProcessed[0];
-      if (latest.type === 'complaint' && activeTab === 'complaints') {
-        const complaint = complaints.find(c => c.content.includes(latest.content.replace('投诉 - ', '')));
-        if (complaint) setRecentlyHighlighted(complaint.id);
-      } else if (latest.type === 'lostitem' && activeTab === 'lostitems') {
-        const item = lostItems.find(l => l.name.includes(latest.content.replace('遗失物品 - ', '')));
-        if (item) setRecentlyHighlighted(item.id);
-      } else if (latest.type === 'broadcast' && activeTab === 'broadcasts') {
-        const broadcast = broadcasts.find(b => b.content.includes(latest.content.replace('广播 - ', '')));
-        if (broadcast) setRecentlyHighlighted(broadcast.id);
+      if (latest.type === 'complaint') {
+        setHighlightedId(latest.recordId);
+      } else if (latest.type === 'lostitem') {
+        setHighlightedId(latest.recordId);
+      } else if (latest.type === 'broadcast') {
+        setHighlightedId(latest.recordId);
       }
       
-      const timer = setTimeout(() => setRecentlyHighlighted(null), 5000);
+      const timer = setTimeout(() => setHighlightedId(null), 5000);
       return () => clearTimeout(timer);
     }
-  }, [recentlyProcessed, activeTab]);
+  }, [recentlyProcessed]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    if (tab === 'complaints') {
-      const latestComplaint = recentlyProcessed.find(p => p.type === 'complaint');
-      if (latestComplaint) {
-        const complaint = complaints.find(c => c.content.includes(latestComplaint.content.replace('投诉 - ', '')));
-        if (complaint) setRecentlyHighlighted(complaint.id);
-      }
-    } else if (tab === 'lostitems') {
-      const latestLostItem = recentlyProcessed.find(p => p.type === 'lostitem');
-      if (latestLostItem) {
-        const item = lostItems.find(l => l.name.includes(latestLostItem.content.replace('遗失物品 - ', '')));
-        if (item) setRecentlyHighlighted(item.id);
-      }
-    } else if (tab === 'broadcasts') {
-      const latestBroadcast = recentlyProcessed.find(p => p.type === 'broadcast');
-      if (latestBroadcast) {
-        const broadcast = broadcasts.find(b => b.content.includes(latestBroadcast.content.replace('广播 - ', '')));
-        if (broadcast) setRecentlyHighlighted(broadcast.id);
+    if (recentlyProcessed.length > 0) {
+      const latest = recentlyProcessed[0];
+      if ((tab === 'complaints' && latest.type === 'complaint') ||
+          (tab === 'lostitems' && latest.type === 'lostitem') ||
+          (tab === 'broadcasts' && latest.type === 'broadcast')) {
+        setHighlightedId(latest.recordId);
       }
     }
   };
@@ -68,31 +57,51 @@ export default function FeedbackManagement() {
   const complaintTableData = complaints.map(complaint => ({
     id: complaint.id,
     userName: complaint.userName,
-    content: complaint.content,
+    content: (
+      <div className="max-w-md">
+        <span className={highlightedId === complaint.id ? 'bg-yellow-200 px-1 rounded' : ''}>
+          {complaint.content}
+        </span>
+      </div>
+    ),
     status: <Badge status={complaint.status} type="complaint" />,
     assignee: complaint.assigneeName || '待分派',
     createdAt: complaint.createdAt,
-    isHighlighted: recentlyHighlighted === complaint.id,
+    isHighlighted: highlightedId === complaint.id,
   }));
 
   const lostItemTableData = lostItems.map(item => ({
     id: item.id,
-    name: item.name,
+    name: (
+      <span className={highlightedId === item.id ? 'bg-yellow-200 px-1 rounded' : ''}>
+        {item.name}
+      </span>
+    ),
     userName: item.userName,
-    description: item.description,
+    description: (
+      <div className="max-w-xs truncate" title={item.description}>
+        {item.description}
+      </div>
+    ),
     location: item.location,
     status: <Badge status={item.status} type="lostitem" />,
     createdAt: item.createdAt,
-    isHighlighted: recentlyHighlighted === item.id,
+    isHighlighted: highlightedId === item.id,
   }));
 
   const broadcastTableData = broadcasts.map(broadcast => ({
     id: broadcast.id,
-    content: broadcast.content,
+    content: (
+      <div className="max-w-lg">
+        <span className={highlightedId === broadcast.id ? 'bg-yellow-200 px-1 rounded' : ''}>
+          {broadcast.content}
+        </span>
+      </div>
+    ),
     area: broadcast.area,
     operatorName: broadcast.operatorName,
     broadcastAt: broadcast.broadcastAt,
-    isHighlighted: recentlyHighlighted === broadcast.id,
+    isHighlighted: highlightedId === broadcast.id,
   }));
 
   const complaintColumns = [
@@ -210,6 +219,21 @@ export default function FeedbackManagement() {
     setFormData({ ...formData, assigneeId: '', assigneeName: '' });
   };
 
+  const getHighlightedContent = () => {
+    if (recentlyProcessed.length === 0) return null;
+    const latest = recentlyProcessed[0];
+    return (
+      <div 
+        className={`p-3 rounded-lg border-2 transition-all ${
+          highlightedId ? 'border-yellow-400 bg-yellow-50 animate-pulse' : 'border-transparent'
+        }`}
+      >
+        <p className="font-medium text-slate-800">{latest.content}</p>
+        <p className="text-xs text-slate-500 mt-1">{latest.action} - {latest.timestamp}</p>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6">
       {recentlyProcessed.length > 0 && (
@@ -231,20 +255,27 @@ export default function FeedbackManagement() {
             {recentlyProcessed.slice(0, 5).map((item, index) => (
               <div 
                 key={item.id}
-                className={`flex items-center gap-3 p-2 rounded-lg transition-all ${
-                  index === 0 ? 'bg-white shadow-sm animate-pulse' : 'bg-white/50'
+                className={`flex items-start gap-3 p-2 rounded-lg transition-all ${
+                  index === 0 ? 'bg-white shadow-sm' : 'bg-white/50'
                 }`}
               >
-                <Clock className="w-4 h-4 text-slate-400" />
-                <span className="text-sm text-slate-700 flex-1">{item.content}</span>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  item.action.includes('分派') ? 'bg-blue-100 text-blue-700' :
-                  item.action.includes('解决') || item.action.includes('认领') ? 'bg-green-100 text-green-700' :
-                  'bg-orange-100 text-orange-700'
-                }`}>
-                  {item.action}
-                </span>
-                <span className="text-xs text-slate-400">{item.timestamp}</span>
+                <Clock className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${index === 0 ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
+                    {item.content}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      item.action.includes('分派') ? 'bg-blue-100 text-blue-700' :
+                      item.action.includes('解决') || item.action.includes('认领') ? 'bg-green-100 text-green-700' :
+                      item.action.includes('发布') ? 'bg-orange-100 text-orange-700' :
+                      'bg-purple-100 text-purple-700'
+                    }`}>
+                      {item.action}
+                    </span>
+                    <span className="text-xs text-slate-400">{item.timestamp}</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -321,22 +352,24 @@ export default function FeedbackManagement() {
       </div>
 
       {activeTab === 'complaints' && (
-        <div className="relative">
+        <div className="space-y-4">
+          {highlightedId && getHighlightedContent()}
           <Table columns={complaintColumns} data={complaintTableData} rowActions={complaintActions} />
-          {recentlyHighlighted && (
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute border-2 border-blue-500 rounded-xl animate-ping w-full h-full opacity-50" />
-            </div>
-          )}
         </div>
       )}
 
       {activeTab === 'lostitems' && (
-        <Table columns={lostItemColumns} data={lostItemTableData} rowActions={lostItemActions} />
+        <div className="space-y-4">
+          {highlightedId && getHighlightedContent()}
+          <Table columns={lostItemColumns} data={lostItemTableData} rowActions={lostItemActions} />
+        </div>
       )}
 
       {activeTab === 'broadcasts' && (
-        <Table columns={broadcastColumns} data={broadcastTableData} />
+        <div className="space-y-4">
+          {highlightedId && getHighlightedContent()}
+          <Table columns={broadcastColumns} data={broadcastTableData} />
+        </div>
       )}
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, CheckCircle, XCircle, Filter, Ship, MessageSquare, Clock, Users } from 'lucide-react';
+import { Search, Plus, CheckCircle, XCircle, Filter, Ship, MessageSquare, Clock, Users, Ticket, Check } from 'lucide-react';
 import { Table, Badge, Modal } from '../components/Common';
 import { useStore } from '../store/useStore';
 
@@ -8,6 +8,9 @@ export default function BookingManagement() {
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [activeTab, setActiveTab] = useState('bookings');
+  const [dispatchModal, setDispatchModal] = useState(false);
+  const [dispatchType, setDispatchType] = useState<'guide' | 'cruise' | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [formData, setFormData] = useState({
     userName: '',
     entryPoint: '断桥入口',
@@ -16,9 +19,18 @@ export default function BookingManagement() {
     hasGuideService: false,
     hasCruiseService: false,
     passengerCount: 1,
+    selectedGuideId: '',
+    selectedGuideName: '',
+    selectedScheduleId: '',
+    selectedCruiseName: '',
   });
 
-  const { bookings, guides, guideSchedules, cruises, cruiseSchedules, verifyBooking, cancelBooking, addBooking, assignGuideToBooking, getPendingDispatchList } = useStore();
+  const { 
+    bookings, guides, guideSchedules, cruises, cruiseSchedules, cruiseReservations,
+    verifyBooking, cancelBooking, addBooking, 
+    dispatchBookingGuide, dispatchBookingCruise, getCruiseAvailableSeats, getPendingDispatchList 
+  } = useStore();
+  
   const pendingDispatchList = getPendingDispatchList();
 
   const filteredBookings = bookings.filter(booking => {
@@ -40,13 +52,13 @@ export default function BookingManagement() {
               {booking.hasGuideService && (
                 <span className="inline-flex items-center px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">
                   <MessageSquare className="w-3 h-3 mr-0.5" />
-                  讲解
+                  {booking.guideName || '讲解'}
                 </span>
               )}
               {booking.hasCruiseService && (
                 <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
                   <Ship className="w-3 h-3 mr-0.5" />
-                  游船
+                  {booking.cruiseName || '游船'}{booking.passengerCount ? `${booking.passengerCount}人` : ''}
                 </span>
               )}
             </div>
@@ -61,7 +73,7 @@ export default function BookingManagement() {
   });
 
   const columns = [
-    { key: 'entryPoint', label: '入口', align: 'left' as const },
+    { key: 'entryPoint', label: '入口/附加服务', align: 'left' as const },
     { key: 'visitDate', label: '预约日期', align: 'center' as const },
     { key: 'timeSlot', label: '时段', align: 'center' as const },
     { key: 'status', label: '状态', align: 'center' as const },
@@ -75,26 +87,39 @@ export default function BookingManagement() {
     timeSlot: booking.timeSlot,
     services: (
       <div className="flex items-center gap-2">
-        {booking.hasGuideService && (
+        {booking.hasGuideService && !booking.guideScheduleId && (
           <span className="inline-flex items-center px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
             <MessageSquare className="w-3 h-3 mr-1" />
             需要讲解
           </span>
         )}
-        {booking.hasCruiseService && (
+        {booking.hasCruiseService && !booking.cruiseScheduleId && (
           <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
             <Ship className="w-3 h-3 mr-1" />
             需要游船
           </span>
         )}
+        {booking.hasGuideService && booking.guideScheduleId && (
+          <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+            <Check className="w-3 h-3 mr-1" />
+            讲解已分派
+          </span>
+        )}
+        {booking.hasCruiseService && booking.cruiseScheduleId && (
+          <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+            <Check className="w-3 h-3 mr-1" />
+            游船已分派
+          </span>
+        )}
       </div>
     ),
     passengerCount: booking.hasCruiseService ? `${booking.passengerCount || 1}人` : '-',
+    action: '待分派',
   }));
 
   const dispatchColumns = [
     { key: 'entryPoint', label: '入口', align: 'left' as const },
-    { key: 'visitDate', label: '预约日期', align: 'center' as const },
+    { key: 'visitDate', label: '日期', align: 'center' as const },
     { key: 'timeSlot', label: '时段', align: 'center' as const },
     { key: 'services', label: '附加服务', align: 'left' as const },
     { key: 'passengerCount', label: '人数', align: 'center' as const },
@@ -133,18 +158,36 @@ export default function BookingManagement() {
     if (!booking) return null;
     
     return (
-      <>
-        {booking.hasGuideService && (
-          <button className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="分派讲解员">
+      <div className="flex items-center gap-2">
+        {booking.hasGuideService && !booking.guideScheduleId && (
+          <button 
+            onClick={() => {
+              setSelectedBooking(booking);
+              setDispatchType('guide');
+              setFormData({...formData, selectedGuideId: '', selectedGuideName: ''});
+              setDispatchModal(true);
+            }}
+            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" 
+            title="分派讲解员"
+          >
             <MessageSquare className="w-4 h-4" />
           </button>
         )}
-        {booking.hasCruiseService && (
-          <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="分派游船">
+        {booking.hasCruiseService && !booking.cruiseScheduleId && (
+          <button 
+            onClick={() => {
+              setSelectedBooking(booking);
+              setDispatchType('cruise');
+              setFormData({...formData, selectedScheduleId: '', selectedCruiseName: ''});
+              setDispatchModal(true);
+            }}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
+            title="分派游船"
+          >
             <Ship className="w-4 h-4" />
           </button>
         )}
-      </>
+      </div>
     );
   };
 
@@ -167,12 +210,34 @@ export default function BookingManagement() {
       hasGuideService: false,
       hasCruiseService: false,
       passengerCount: 1,
+      selectedGuideId: '',
+      selectedGuideName: '',
+      selectedScheduleId: '',
+      selectedCruiseName: '',
     });
     setShowModal(false);
   };
 
-  const availableGuides = guides.filter(g => g.status === 'available').length;
-  const availableCruises = cruises.filter(c => c.status === 'available').length;
+  const handleDispatch = () => {
+    if (!selectedBooking) return;
+    
+    if (dispatchType === 'guide' && formData.selectedGuideId) {
+      dispatchBookingGuide(selectedBooking.id, formData.selectedGuideId, formData.selectedGuideName);
+    } else if (dispatchType === 'cruise' && formData.selectedScheduleId) {
+      dispatchBookingCruise(selectedBooking.id, formData.selectedScheduleId, formData.selectedCruiseName, selectedBooking.passengerCount || 1);
+    }
+    
+    setDispatchModal(false);
+    setSelectedBooking(null);
+    setDispatchType(null);
+  };
+
+  const availableGuides = guides.filter(g => g.status === 'available');
+  const availableSchedules = cruiseSchedules.filter(s => {
+    if (s.status !== 'scheduled') return false;
+    const seats = getCruiseAvailableSeats(s.id);
+    return seats.available > 0;
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -199,6 +264,7 @@ export default function BookingManagement() {
         >
           <Filter className="w-4 h-4" />
           <span>预约列表</span>
+          <span className="text-xs opacity-75">({filteredBookings.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('dispatch')}
@@ -251,17 +317,17 @@ export default function BookingManagement() {
       {activeTab === 'dispatch' && (
         <div className="space-y-4">
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4">
-            <h3 className="font-semibold text-slate-800 mb-2">资源可用情况</h3>
+            <h3 className="font-semibold text-slate-800 mb-2">待调度资源需求</h3>
             <div className="flex gap-6">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-purple-600" />
                 <span className="text-sm text-slate-600">空闲讲解员: </span>
-                <span className="font-semibold text-purple-600">{availableGuides}人</span>
+                <span className="font-semibold text-purple-600">{availableGuides.length}人</span>
               </div>
               <div className="flex items-center gap-2">
                 <Ship className="w-5 h-5 text-blue-600" />
-                <span className="text-sm text-slate-600">可用游船: </span>
-                <span className="font-semibold text-blue-600">{availableCruises}艘</span>
+                <span className="text-sm text-slate-600">可用班次: </span>
+                <span className="font-semibold text-blue-600">{availableSchedules.length}班</span>
               </div>
             </div>
           </div>
@@ -347,7 +413,7 @@ export default function BookingManagement() {
                   <span className="font-medium text-slate-700">需要讲解服务</span>
                   <p className="text-xs text-slate-500">安排专业讲解员全程陪同</p>
                 </div>
-                <span className="text-xs text-purple-600">{availableGuides}人可用</span>
+                <span className="text-xs text-purple-600">{availableGuides.length}人可用</span>
               </label>
               
               <label className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
@@ -362,7 +428,7 @@ export default function BookingManagement() {
                   <span className="font-medium text-slate-700">需要游船服务</span>
                   <p className="text-xs text-slate-500">乘坐游船游览西湖风光</p>
                 </div>
-                <span className="text-xs text-blue-600">{availableCruises}艘可用</span>
+                <span className="text-xs text-blue-600">{availableSchedules.length}班可用</span>
               </label>
               
               {formData.hasCruiseService && (
@@ -393,6 +459,111 @@ export default function BookingManagement() {
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               确认预约
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal 
+        isOpen={dispatchModal} 
+        onClose={() => { setDispatchModal(false); setSelectedBooking(null); setDispatchType(null); }} 
+        title={dispatchType === 'guide' ? '分派讲解员' : '分派游船'}
+      >
+        <div className="space-y-4">
+          {selectedBooking && (
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-sm text-slate-600">
+                预约: <span className="font-medium">{selectedBooking.entryPoint}</span> | 
+                {selectedBooking.visitDate} {selectedBooking.timeSlot}
+              </p>
+            </div>
+          )}
+
+          {dispatchType === 'guide' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">选择可用讲解员</label>
+              <div className="space-y-2">
+                {availableGuides.length === 0 ? (
+                  <p className="text-slate-500 text-sm">暂无空闲讲解员</p>
+                ) : (
+                  availableGuides.map(guide => (
+                    <label 
+                      key={guide.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                        formData.selectedGuideId === guide.id ? 'bg-purple-100 border-2 border-purple-500' : 'bg-slate-50 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input 
+                        type="radio"
+                        name="guide"
+                        checked={formData.selectedGuideId === guide.id}
+                        onChange={() => setFormData({...formData, selectedGuideId: guide.id, selectedGuideName: guide.name})}
+                        className="w-4 h-4 text-purple-600"
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium text-slate-700">{guide.name}</span>
+                        <p className="text-xs text-slate-500">{guide.phone}</p>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {dispatchType === 'cruise' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">选择可用班次</label>
+              <div className="space-y-2">
+                {availableSchedules.length === 0 ? (
+                  <p className="text-slate-500 text-sm">暂无可用班次</p>
+                ) : (
+                  availableSchedules.map(schedule => {
+                    const seats = getCruiseAvailableSeats(schedule.id);
+                    return (
+                      <label 
+                        key={schedule.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                          formData.selectedScheduleId === schedule.id ? 'bg-blue-100 border-2 border-blue-500' : 'bg-slate-50 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input 
+                          type="radio"
+                          name="schedule"
+                          checked={formData.selectedScheduleId === schedule.id}
+                          onChange={() => setFormData({...formData, selectedScheduleId: schedule.id, selectedCruiseName: schedule.cruiseName})}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-slate-700">{schedule.cruiseName}</span>
+                          <span className="mx-2 text-slate-400">|</span>
+                          <span className="text-slate-600">{schedule.departureTime}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs">
+                          <Ticket className="w-3 h-3 text-slate-400" />
+                          <span className="text-slate-500">剩余{seats.available}座</span>
+                        </div>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              onClick={() => { setDispatchModal(false); setSelectedBooking(null); setDispatchType(null); }}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              取消
+            </button>
+            <button 
+              onClick={handleDispatch}
+              disabled={(dispatchType === 'guide' && !formData.selectedGuideId) || (dispatchType === 'cruise' && !formData.selectedScheduleId)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              确认分派
             </button>
           </div>
         </div>

@@ -18,18 +18,12 @@ export default function CruiseManagement() {
   const { 
     cruises, cruiseSchedules, cruiseReservations, 
     addCruiseSchedule, updateCruiseSchedule, cancelCruiseSchedule,
-    addCruiseReservation, getCruiseAvailableSeats 
+    addCruiseReservation, getCruiseAvailableSeats, getCruiseTotalCapacity 
   } = useStore();
 
   const fleetTableData = cruises.map(cruise => {
-    const totalSeats = cruise.capacity;
-    const reservedSeats = cruiseReservations
-      .filter(r => {
-        const schedule = cruiseSchedules.find(s => s.cruiseId === cruise.id && r.scheduleId === s.id);
-        return schedule && r.status === 'confirmed';
-      })
-      .reduce((sum, r) => sum + r.passengerCount, 0);
-    const occupancyRate = totalSeats > 0 ? (reservedSeats / totalSeats * 100).toFixed(0) : '0';
+    const capacity = getCruiseTotalCapacity(cruise.id);
+    const occupancyRate = capacity.total > 0 ? (capacity.reserved / capacity.total * 100).toFixed(0) : '0';
     
     return {
       id: cruise.id,
@@ -48,9 +42,10 @@ export default function CruiseManagement() {
               style={{ width: `${occupancyRate}%` }}
             />
           </div>
-          <span className="text-sm text-slate-600">{reservedSeats}/{totalSeats}</span>
+          <span className="text-sm text-slate-600">{capacity.reserved}/{capacity.total}</span>
         </div>
       ),
+      available: capacity.available,
       status: <Badge status={cruise.status} type="cruise" />,
     };
   });
@@ -58,12 +53,12 @@ export default function CruiseManagement() {
   const fleetColumns = [
     { key: 'name', label: '游船名称', align: 'left' as const },
     { key: 'capacity', label: '载客量', align: 'center' as const },
-    { key: 'occupancy', label: '占用情况', align: 'left' as const },
+    { key: 'occupancy', label: '已预约', align: 'left' as const },
+    { key: 'available', label: '剩余', align: 'center' as const },
     { key: 'status', label: '状态', align: 'center' as const },
   ];
 
   const scheduleTableData = cruiseSchedules.map(schedule => {
-    const cruise = cruises.find(c => c.id === schedule.cruiseId);
     const seats = getCruiseAvailableSeats(schedule.id);
     const pendingReschedule = cruiseReservations.filter(r => r.scheduleId === schedule.id && r.status === 'pending_reschedule').length;
     const occupancyRate = seats.total > 0 ? (seats.reserved / seats.total * 100).toFixed(0) : '0';
@@ -75,8 +70,9 @@ export default function CruiseManagement() {
       capacity: (
         <div className="flex items-center gap-2">
           <Ticket className="w-4 h-4 text-slate-400" />
-          <span>{seats.reserved}/{seats.total}</span>
-          <span className="text-xs text-slate-400">剩余{seats.available}</span>
+          <span className="font-medium">{seats.reserved}</span>
+          <span className="text-slate-400">/</span>
+          <span>{seats.total}</span>
         </div>
       ),
       occupancy: (
@@ -91,6 +87,11 @@ export default function CruiseManagement() {
             {occupancyRate}%
           </span>
         </div>
+      ),
+      available: (
+        <span className={`font-medium ${seats.available < 10 ? 'text-orange-600' : 'text-green-600'}`}>
+          {seats.available}
+        </span>
       ),
       reschedule: pendingReschedule > 0 ? (
         <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">
@@ -112,6 +113,7 @@ export default function CruiseManagement() {
     { key: 'departureTime', label: '发船时间', align: 'center' as const },
     { key: 'capacity', label: '座位', align: 'left' as const },
     { key: 'occupancy', label: '占用率', align: 'left' as const },
+    { key: 'available', label: '剩余', align: 'center' as const },
     { key: 'reschedule', label: '改签', align: 'center' as const },
     { key: 'status', label: '状态', align: 'center' as const },
   ];
@@ -156,30 +158,14 @@ export default function CruiseManagement() {
       cruiseName: cruise.name,
       departureTime: formData.departureTime,
       status: 'scheduled',
+      initialPassengers: formData.passengerCount,
     });
-    if (formData.passengerCount > 0) {
-      const schedule = cruiseSchedules[cruiseSchedules.length];
-      if (schedule) {
-        addCruiseReservation({
-          scheduleId: schedule.id,
-          passengerCount: formData.passengerCount,
-          status: 'confirmed',
-        });
-      }
-    }
     setFormData({ cruiseId: '', cruiseName: '', departureTime: '', passengerCount: 0 });
     setShowModal(false);
   };
 
   const handleUpdateSchedule = () => {
-    updateCruiseSchedule(editingId, formData.departureTime);
-    if (formData.passengerCount > 0) {
-      addCruiseReservation({
-        scheduleId: editingId,
-        passengerCount: formData.passengerCount,
-        status: 'confirmed',
-      });
-    }
+    updateCruiseSchedule(editingId, formData.departureTime, formData.passengerCount > 0 ? formData.passengerCount : undefined);
     setEditModal(false);
     setEditingId('');
     setFormData({ cruiseId: '', cruiseName: '', departureTime: '', passengerCount: 0 });
@@ -276,6 +262,7 @@ export default function CruiseManagement() {
               onChange={(e) => {
                 const cruise = cruises.find(c => c.id === e.target.value);
                 if (cruise) {
+                  const capacity = getCruiseTotalCapacity(cruise.id);
                   setFormData({...formData, cruiseId: e.target.value, cruiseName: cruise.name, passengerCount: 0});
                 }
               }}
@@ -283,10 +270,10 @@ export default function CruiseManagement() {
             >
               <option value="">请选择游船</option>
               {availableCruises.map(cruise => {
-                const seats = getCruiseAvailableSeats(cruise.id);
+                const capacity = getCruiseTotalCapacity(cruise.id);
                 return (
                   <option key={cruise.id} value={cruise.id}>
-                    {cruise.name} (载客量: {cruise.capacity}, 已预约: {seats.reserved})
+                    {cruise.name} (总载客: {cruise.capacity}, 已预约: {capacity.reserved}, 剩余: {capacity.available})
                   </option>
                 );
               })}
@@ -302,20 +289,46 @@ export default function CruiseManagement() {
             />
           </div>
           {formData.cruiseId && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">预约人数</label>
-              <input 
-                type="number" 
-                min="0"
-                max={getCruiseAvailableSeats(formData.cruiseId).available}
-                value={formData.passengerCount}
-                onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                placeholder="输入预约人数"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                当前游船剩余座位: {getCruiseAvailableSeats(formData.cruiseId).available}
-              </p>
+            <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">选择游船:</span>
+                <span className="font-medium text-blue-700">{formData.cruiseName}</span>
+              </div>
+              {(() => {
+                const cruise = cruises.find(c => c.id === formData.cruiseId);
+                const capacity = cruise ? getCruiseTotalCapacity(cruise.id) : { total: 0, reserved: 0, available: 0 };
+                return (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">总载客量:</span>
+                      <span className="font-medium">{capacity.total}人</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">已预约:</span>
+                      <span className="font-medium text-orange-600">{capacity.reserved}人</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">剩余座位:</span>
+                      <span className="font-bold text-green-600">{capacity.available}人</span>
+                    </div>
+                  </>
+                );
+              })()}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">本班次预约人数</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  max={(() => {
+                    const cruise = cruises.find(c => c.id === formData.cruiseId);
+                    return cruise ? getCruiseTotalCapacity(cruise.id).available : 0;
+                  })()}
+                  value={formData.passengerCount}
+                  onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                  placeholder="输入本班次预约人数"
+                />
+              </div>
             </div>
           )}
           <div className="flex justify-end gap-3 pt-4">
@@ -356,16 +369,22 @@ export default function CruiseManagement() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">增加预约人数</label>
-            <input 
-              type="number" 
-              min="0"
-              value={formData.passengerCount}
-              onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-              placeholder="输入增加的人数"
-            />
+          <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">当前班次剩余座位:</span>
+              <span className="font-bold text-green-600">{getCruiseAvailableSeats(editingId).available}人</span>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">增加预约人数</label>
+              <input 
+                type="number" 
+                min="0"
+                value={formData.passengerCount}
+                onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                placeholder="输入增加的人数"
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <button
