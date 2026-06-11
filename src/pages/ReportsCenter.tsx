@@ -1,13 +1,31 @@
 import { useState } from 'react';
-import { BarChart3, Store, Users, TrendingUp, Download, Calendar, Shield } from 'lucide-react';
+import { BarChart3, Store, Users, TrendingUp, Download, Calendar, Shield, MapPin, AlertTriangle } from 'lucide-react';
 import { Table } from '../components/Common';
 import { useStore } from '../store/useStore';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
+const AREAS = ['全部', '断桥', '苏堤', '白堤', '雷峰塔', '曲院风荷', '花港观鱼', '岳庙', '三潭印月'];
+
 export default function ReportsCenter() {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedDate, setSelectedDate] = useState('2024-01-15');
-  const { merchants, satisfactionData, dailyReports, flowData, exportDailyReport, user, switchRole } = useStore();
+  const { 
+    merchants, satisfactionData, dailyReports, flowData, 
+    exportDailyReport, user, switchRole, switchArea, userArea,
+    getFilteredFlowData, getFilteredComplaints, getFilteredWorkOrders, getFilteredBookings 
+  } = useStore();
+
+  const isAreaAdmin = user.role === 'area_admin';
+  const filteredFlowData = getFilteredFlowData();
+  const filteredComplaints = getFilteredComplaints();
+  const filteredWorkOrders = getFilteredWorkOrders();
+  const filteredBookings = getFilteredBookings();
+
+  const totalVisitors = filteredFlowData.reduce((sum, item) => sum + item.visitorCount, 0);
+  const totalCapacity = filteredFlowData.reduce((sum, item) => sum + item.capacity, 0);
+  const occupancyRate = totalCapacity > 0 ? ((totalVisitors / totalCapacity) * 100).toFixed(1) : '0';
+  const pendingComplaints = filteredComplaints.filter(c => c.status === 'pending').length;
+  const pendingWorkOrders = filteredWorkOrders.filter(w => w.status !== 'completed').length;
 
   const merchantTableData = merchants.map(merchant => ({
     id: merchant.id,
@@ -32,7 +50,7 @@ export default function ReportsCenter() {
     { key: 'revenue', label: '今日营收', align: 'right' as const },
   ];
 
-  const limitTableData = flowData.map(area => {
+  const limitTableData = filteredFlowData.map(area => {
     const rate = (area.visitorCount / area.capacity) * 100;
     return ({
       id: area.id,
@@ -72,16 +90,16 @@ export default function ReportsCenter() {
     { key: 'status', label: '状态', align: 'center' as const },
   ];
 
-  const COLORS = ['#1E88E5', '#43A047', '#FB8C00', '#E53935', '#8E24AA'];
-
-  const hasAdminAccess = user.role === 'admin';
+  const COLORS = ['#1E88E5', '#43A047', '#FB8C00', '#E53935', '#8E24AA', '#00ACC1', '#7CB342', '#FFB300', '#5E35B1'];
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">报表中心</h1>
-          <p className="text-slate-500 mt-1">数据分析与日报导出</p>
+          <p className="text-slate-500 mt-1">
+            {isAreaAdmin ? `片区数据 - ${userArea === 'all' ? '全部' : userArea}` : '全景区数据分析'}
+          </p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -111,131 +129,160 @@ export default function ReportsCenter() {
               <option value="area_admin">片区管理员</option>
             </select>
           </div>
+          {isAreaAdmin && (
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-slate-500" />
+              <select
+                value={userArea}
+                onChange={(e) => switchArea(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                {AREAS.map(area => (
+                  <option key={area} value={area === '全部' ? 'all' : area}>
+                    {area}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex gap-2 bg-white p-1 rounded-lg shadow-sm inline-flex">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'overview' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          <span>数据概览</span>
-        </button>
-        {hasAdminAccess && (
-          <button
-            onClick={() => setActiveTab('merchants')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-              activeTab === 'merchants' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Store className="w-4 h-4" />
-            <span>商户状态</span>
-          </button>
-        )}
-        <button
-          onClick={() => setActiveTab('limits')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'limits' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>限流管理</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('satisfaction')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'satisfaction' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          <span>满意度统计</span>
-        </button>
-      </div>
+      {isAreaAdmin && (
+        <div className={`${userArea === 'all' ? 'bg-gradient-to-r from-blue-50 to-cyan-50' : 'bg-gradient-to-r from-orange-50 to-yellow-50'} border border-blue-200 rounded-xl p-4`}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-5 h-5 text-blue-600" />
+            <span className="font-semibold text-slate-800">片区管理员视图</span>
+          </div>
+          <p className="text-sm text-slate-600">
+            {userArea === 'all' 
+              ? '当前查看全部片区汇总数据，包含各片区的客流、工单、投诉统计。'
+              : `当前仅查看「${userArea}」片区的数据，其他片区数据已过滤。`
+            }
+          </p>
+        </div>
+      )}
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">近7日客流趋势</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dailyReports}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" stroke="#6b7280" />
-                  <YAxis stroke="#6b7280" />
-                  <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                  <Line type="monotone" dataKey="totalVisitors" stroke="#1e88e5" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-slate-500">当前客流</p>
+              <p className="text-2xl font-bold text-slate-800">{totalVisitors.toLocaleString()}</p>
+              <p className="text-xs text-slate-400">{userArea === 'all' ? '全景区' : userArea}</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-slate-500">承载率</p>
+              <p className={`text-2xl font-bold ${parseFloat(occupancyRate) > 80 ? 'text-red-600' : 'text-green-600'}`}>
+                {occupancyRate}%
+              </p>
+              <p className="text-xs text-slate-400">当前区域</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-slate-500">待处理投诉</p>
+              <p className={`text-2xl font-bold ${pendingComplaints > 0 ? 'text-orange-600' : 'text-slate-800'}`}>
+                {pendingComplaints}
+              </p>
+              <p className="text-xs text-slate-400">待分派</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-slate-500">待处理工单</p>
+              <p className={`text-2xl font-bold ${pendingWorkOrders > 0 ? 'text-orange-600' : 'text-slate-800'}`}>
+                {pendingWorkOrders}
+              </p>
+              <p className="text-xs text-slate-400">进行中</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">预约与投诉统计</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyReports}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" stroke="#6b7280" />
-                  <YAxis stroke="#6b7280" />
-                  <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                  <Bar dataKey="bookings" fill="#1e88e5" name="预约数" />
-                  <Bar dataKey="complaints" fill="#e53935" name="投诉数" />
-                </BarChart>
-              </ResponsiveContainer>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-xl p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-800 mb-4">
+                {userArea === 'all' ? '全景区客流趋势' : `${userArea}客流趋势`}
+              </h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={dailyReports}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                    <Line type="monotone" dataKey="totalVisitors" stroke="#1e88e5" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">工单完成情况</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyReports}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" stroke="#6b7280" />
-                  <YAxis stroke="#6b7280" />
-                  <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                  <Bar dataKey="workOrdersCompleted" fill="#43a047" />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="bg-white rounded-xl p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-800 mb-4">预约与投诉统计</h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyReports}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                    <Bar dataKey="bookings" fill="#1e88e5" name="预约数" />
+                    <Bar dataKey="complaints" fill="#e53935" name="投诉数" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">客流区域分布</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={flowData.map(a => ({ name: a.areaName, value: a.visitorCount }))}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {flowData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+            <div className="bg-white rounded-xl p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-800 mb-4">工单完成情况</h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyReports}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                    <Bar dataKey="workOrdersCompleted" fill="#43a047" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-800 mb-4">
+                {userArea === 'all' ? '客流区域分布' : `${userArea}承载情况`}
+              </h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={filteredFlowData.map(a => ({ name: a.areaName, value: a.visitorCount }))}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {filteredFlowData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {activeTab === 'merchants' && hasAdminAccess && (
-        <Table columns={merchantColumns} data={merchantTableData} />
-      )}
-
-      {activeTab === 'merchants' && !hasAdminAccess && (
-        <div className="bg-white rounded-xl p-8 shadow-sm text-center">
-          <p className="text-slate-500">片区管理员无商户状态查看权限</p>
-        </div>
+      {activeTab === 'merchants' && (
+        <>
+          {!isAreaAdmin ? (
+            <Table columns={merchantColumns} data={merchantTableData} />
+          ) : (
+            <div className="bg-white rounded-xl p-8 shadow-sm text-center">
+              <Store className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">片区管理员无商户状态查看权限</p>
+              <p className="text-sm text-slate-400 mt-1">商户数据仅对运营中心开放</p>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === 'limits' && (
@@ -270,6 +317,59 @@ export default function ReportsCenter() {
           </div>
         </div>
       )}
+
+      <div className="flex gap-2 bg-white p-1 rounded-lg shadow-sm inline-flex">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'overview' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>数据概览</span>
+        </button>
+        {isAreaAdmin ? (
+          <button
+            onClick={() => setActiveTab('merchants')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+              activeTab === 'merchants' ? 'bg-blue-600 text-white' : 'text-slate-400 cursor-not-allowed'
+            }`}
+            disabled
+          >
+            <Store className="w-4 h-4" />
+            <span>商户状态</span>
+            <span className="text-xs opacity-75">(无权)</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setActiveTab('merchants')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+              activeTab === 'merchants' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Store className="w-4 h-4" />
+            <span>商户状态</span>
+          </button>
+        )}
+        <button
+          onClick={() => setActiveTab('limits')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'limits' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>限流管理</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('satisfaction')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'satisfaction' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>满意度统计</span>
+        </button>
+      </div>
     </div>
   );
 }

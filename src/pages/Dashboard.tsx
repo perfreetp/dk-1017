@@ -4,19 +4,31 @@ import { useStore } from '../store/useStore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
-  const { flowData, warnings, dailyReports, user } = useStore();
+  const { flowData, warnings, dailyReports, user, userArea, switchArea } = useStore();
 
-  const totalVisitors = flowData.reduce((sum, item) => sum + item.visitorCount, 0);
-  const totalCapacity = flowData.reduce((sum, item) => sum + item.capacity, 0);
-  const occupancyRate = ((totalVisitors / totalCapacity) * 100).toFixed(1);
+  const filteredFlowData = user.role === 'area_admin' && userArea !== 'all' 
+    ? flowData.filter(f => f.areaName === userArea) 
+    : flowData;
+
+  const totalVisitors = filteredFlowData.reduce((sum, item) => sum + item.visitorCount, 0);
+  const totalCapacity = filteredFlowData.reduce((sum, item) => sum + item.capacity, 0);
+  const occupancyRate = totalCapacity > 0 ? ((totalVisitors / totalCapacity) * 100).toFixed(1) : '0';
   const todayBookings = dailyReports[dailyReports.length - 1]?.bookings || 0;
+  const filteredWarnings = user.role === 'area_admin' && userArea !== 'all'
+    ? warnings.filter(w => w.area === userArea)
+    : warnings;
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">态势总览</h1>
-          <p className="text-slate-500 mt-1">实时监控西湖景区客流与服务状态</p>
+          <p className="text-slate-500 mt-1">
+            {user.role === 'area_admin' 
+              ? `实时监控「${userArea === 'all' ? '全景区' : userArea}」客流与服务状态`
+              : '实时监控西湖景区客流与服务状态'
+            }
+          </p>
         </div>
         <div className="flex items-center gap-2 text-slate-500">
           <Clock className="w-4 h-4" />
@@ -47,17 +59,19 @@ export default function Dashboard() {
         />
         <StatCard
           title="预警数量"
-          value={warnings.length}
+          value={filteredWarnings.length}
           icon={<AlertTriangle className="w-6 h-6 text-white" />}
-          color={warnings.some(w => w.level === 'alert') ? 'red' : 'orange'}
+          color={filteredWarnings.some(w => w.level === 'alert') ? 'red' : 'orange'}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-xl p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">客流热力分布</h2>
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">
+            {user.role === 'area_admin' && userArea !== 'all' ? `${userArea}客流热力分布` : '客流热力分布'}
+          </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {flowData.map((area) => {
+            {filteredFlowData.map((area) => {
               const rate = (area.visitorCount / area.capacity) * 100;
               const bgColor = rate > 80 
                 ? 'bg-red-100 border-red-300' 
@@ -85,14 +99,22 @@ export default function Dashboard() {
 
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-slate-800">实时预警</h2>
-          {warnings.map((warning) => (
-            <WarningCard key={warning.id} warning={warning} />
-          ))}
+          {filteredWarnings.length > 0 ? (
+            filteredWarnings.map((warning) => (
+              <WarningCard key={warning.id} warning={warning} />
+            ))
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+              <p className="text-green-600">暂无预警信息</p>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="bg-white rounded-xl p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">近7日客流趋势</h2>
+        <h2 className="text-lg font-semibold text-slate-800 mb-4">
+          {user.role === 'area_admin' && userArea !== 'all' ? `${userArea}近7日客流趋势` : '近7日客流趋势'}
+        </h2>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={dailyReports}>

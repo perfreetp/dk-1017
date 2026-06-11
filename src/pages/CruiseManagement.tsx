@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ship, Clock, Navigation, RefreshCw, AlertCircle, Edit2 } from 'lucide-react';
+import { Ship, Clock, Navigation, Edit2, AlertCircle, Users, Ticket, ArrowRightLeft } from 'lucide-react';
 import { Badge, Table, Modal } from '../components/Common';
 import { useStore } from '../store/useStore';
 
@@ -12,36 +12,107 @@ export default function CruiseManagement() {
     cruiseId: '',
     cruiseName: '',
     departureTime: '',
+    passengerCount: 0,
   });
 
-  const { cruises, cruiseSchedules, addCruiseSchedule, updateCruiseSchedule, cancelCruiseSchedule } = useStore();
+  const { 
+    cruises, cruiseSchedules, cruiseReservations, 
+    addCruiseSchedule, updateCruiseSchedule, cancelCruiseSchedule,
+    addCruiseReservation, getCruiseAvailableSeats 
+  } = useStore();
 
-  const fleetTableData = cruises.map(cruise => ({
-    id: cruise.id,
-    name: cruise.name,
-    capacity: cruise.capacity,
-    status: <Badge status={cruise.status} type="cruise" />,
-  }));
+  const fleetTableData = cruises.map(cruise => {
+    const totalSeats = cruise.capacity;
+    const reservedSeats = cruiseReservations
+      .filter(r => {
+        const schedule = cruiseSchedules.find(s => s.cruiseId === cruise.id && r.scheduleId === s.id);
+        return schedule && r.status === 'confirmed';
+      })
+      .reduce((sum, r) => sum + r.passengerCount, 0);
+    const occupancyRate = totalSeats > 0 ? (reservedSeats / totalSeats * 100).toFixed(0) : '0';
+    
+    return {
+      id: cruise.id,
+      name: cruise.name,
+      capacity: (
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-slate-400" />
+          <span>{cruise.capacity}</span>
+        </div>
+      ),
+      occupancy: (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden max-w-20">
+            <div 
+              className={`h-full transition-all ${parseInt(occupancyRate) > 80 ? 'bg-red-500' : parseInt(occupancyRate) > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+              style={{ width: `${occupancyRate}%` }}
+            />
+          </div>
+          <span className="text-sm text-slate-600">{reservedSeats}/{totalSeats}</span>
+        </div>
+      ),
+      status: <Badge status={cruise.status} type="cruise" />,
+    };
+  });
 
   const fleetColumns = [
     { key: 'name', label: '游船名称', align: 'left' as const },
     { key: 'capacity', label: '载客量', align: 'center' as const },
+    { key: 'occupancy', label: '占用情况', align: 'left' as const },
     { key: 'status', label: '状态', align: 'center' as const },
   ];
 
-  const scheduleTableData = cruiseSchedules.map(schedule => ({
-    id: schedule.id,
-    cruiseName: schedule.cruiseName,
-    departureTime: schedule.departureTime,
-    status: <Badge 
-      status={schedule.status === 'departed' ? 'verified' : schedule.status === 'scheduled' ? 'pending' : 'cancelled'} 
-      type="booking" 
-    />,
-  }));
+  const scheduleTableData = cruiseSchedules.map(schedule => {
+    const cruise = cruises.find(c => c.id === schedule.cruiseId);
+    const seats = getCruiseAvailableSeats(schedule.id);
+    const pendingReschedule = cruiseReservations.filter(r => r.scheduleId === schedule.id && r.status === 'pending_reschedule').length;
+    const occupancyRate = seats.total > 0 ? (seats.reserved / seats.total * 100).toFixed(0) : '0';
+    
+    return {
+      id: schedule.id,
+      cruiseName: schedule.cruiseName,
+      departureTime: schedule.departureTime,
+      capacity: (
+        <div className="flex items-center gap-2">
+          <Ticket className="w-4 h-4 text-slate-400" />
+          <span>{seats.reserved}/{seats.total}</span>
+          <span className="text-xs text-slate-400">剩余{seats.available}</span>
+        </div>
+      ),
+      occupancy: (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden max-w-20">
+            <div 
+              className={`h-full transition-all ${parseInt(occupancyRate) > 80 ? 'bg-red-500' : parseInt(occupancyRate) > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+              style={{ width: `${occupancyRate}%` }}
+            />
+          </div>
+          <span className={`text-xs ${parseInt(occupancyRate) > 80 ? 'text-red-600' : 'text-slate-500'}`}>
+            {occupancyRate}%
+          </span>
+        </div>
+      ),
+      reschedule: pendingReschedule > 0 ? (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">
+          <ArrowRightLeft className="w-3 h-3" />
+          {pendingReschedule}人待改签
+        </span>
+      ) : (
+        <span className="text-xs text-slate-400">-</span>
+      ),
+      status: <Badge 
+        status={schedule.status === 'departed' ? 'verified' : schedule.status === 'scheduled' ? 'pending' : 'cancelled'} 
+        type="booking" 
+      />,
+    };
+  });
 
   const scheduleColumns = [
     { key: 'cruiseName', label: '游船名称', align: 'left' as const },
     { key: 'departureTime', label: '发船时间', align: 'center' as const },
+    { key: 'capacity', label: '座位', align: 'left' as const },
+    { key: 'occupancy', label: '占用率', align: 'left' as const },
+    { key: 'reschedule', label: '改签', align: 'center' as const },
     { key: 'status', label: '状态', align: 'center' as const },
   ];
 
@@ -55,7 +126,7 @@ export default function CruiseManagement() {
           <button 
             onClick={() => {
               setEditingId(schedule.id);
-              setFormData({ cruiseId: schedule.cruiseId, cruiseName: schedule.cruiseName, departureTime: schedule.departureTime });
+              setFormData({ cruiseId: schedule.cruiseId, cruiseName: schedule.cruiseName, departureTime: schedule.departureTime, passengerCount: 0 });
               setEditModal(true);
             }}
             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
@@ -86,15 +157,32 @@ export default function CruiseManagement() {
       departureTime: formData.departureTime,
       status: 'scheduled',
     });
-    setFormData({ cruiseId: '', cruiseName: '', departureTime: '' });
+    if (formData.passengerCount > 0) {
+      const schedule = cruiseSchedules[cruiseSchedules.length];
+      if (schedule) {
+        addCruiseReservation({
+          scheduleId: schedule.id,
+          passengerCount: formData.passengerCount,
+          status: 'confirmed',
+        });
+      }
+    }
+    setFormData({ cruiseId: '', cruiseName: '', departureTime: '', passengerCount: 0 });
     setShowModal(false);
   };
 
   const handleUpdateSchedule = () => {
     updateCruiseSchedule(editingId, formData.departureTime);
+    if (formData.passengerCount > 0) {
+      addCruiseReservation({
+        scheduleId: editingId,
+        passengerCount: formData.passengerCount,
+        status: 'confirmed',
+      });
+    }
     setEditModal(false);
     setEditingId('');
-    setFormData({ cruiseId: '', cruiseName: '', departureTime: '' });
+    setFormData({ cruiseId: '', cruiseName: '', departureTime: '', passengerCount: 0 });
   };
 
   const availableCruises = cruises.filter(c => c.status !== 'maintenance');
@@ -131,7 +219,7 @@ export default function CruiseManagement() {
             activeTab === 'schedule' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          <Clock className="w-4 h-4" />
+          <Ticket className="w-4 h-4" />
           <span>班次计划</span>
         </button>
         <button
@@ -187,14 +275,21 @@ export default function CruiseManagement() {
               value={formData.cruiseId}
               onChange={(e) => {
                 const cruise = cruises.find(c => c.id === e.target.value);
-                setFormData({...formData, cruiseId: e.target.value, cruiseName: cruise?.name || ''});
+                if (cruise) {
+                  setFormData({...formData, cruiseId: e.target.value, cruiseName: cruise.name, passengerCount: 0});
+                }
               }}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
               <option value="">请选择游船</option>
-              {availableCruises.map(cruise => (
-                <option key={cruise.id} value={cruise.id}>{cruise.name} (载客量: {cruise.capacity})</option>
-              ))}
+              {availableCruises.map(cruise => {
+                const seats = getCruiseAvailableSeats(cruise.id);
+                return (
+                  <option key={cruise.id} value={cruise.id}>
+                    {cruise.name} (载客量: {cruise.capacity}, 已预约: {seats.reserved})
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div>
@@ -206,6 +301,23 @@ export default function CruiseManagement() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
             />
           </div>
+          {formData.cruiseId && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">预约人数</label>
+              <input 
+                type="number" 
+                min="0"
+                max={getCruiseAvailableSeats(formData.cruiseId).available}
+                value={formData.passengerCount}
+                onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                placeholder="输入预约人数"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                当前游船剩余座位: {getCruiseAvailableSeats(formData.cruiseId).available}
+              </p>
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <button
               onClick={() => setShowModal(false)}
@@ -224,7 +336,7 @@ export default function CruiseManagement() {
         </div>
       </Modal>
 
-      <Modal isOpen={editModal} onClose={() => { setEditModal(false); setEditingId(''); }} title="调整班次时间">
+      <Modal isOpen={editModal} onClose={() => { setEditModal(false); setEditingId(''); }} title="调整班次">
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">游船</label>
@@ -242,6 +354,17 @@ export default function CruiseManagement() {
               value={formData.departureTime}
               onChange={(e) => setFormData({...formData, departureTime: e.target.value})}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">增加预约人数</label>
+            <input 
+              type="number" 
+              min="0"
+              value={formData.passengerCount}
+              onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+              placeholder="输入增加的人数"
             />
           </div>
           <div className="flex justify-end gap-3 pt-4">

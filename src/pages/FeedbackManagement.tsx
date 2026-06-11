@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MessageCircle, Package, Radio, Plus, Send, CheckCircle, Edit2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { MessageCircle, Package, Radio, Plus, CheckCircle, Edit2, Clock, Sparkles, X } from 'lucide-react';
 import { Badge, Table, Modal } from '../components/Common';
 import { useStore } from '../store/useStore';
 
@@ -9,6 +9,7 @@ export default function FeedbackManagement() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningId, setAssigningId] = useState('');
   const [modalType, setModalType] = useState<'complaint' | 'lostitem' | 'broadcast'>('complaint');
+  const [recentlyHighlighted, setRecentlyHighlighted] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     userName: '',
     content: '',
@@ -20,7 +21,49 @@ export default function FeedbackManagement() {
     assigneeName: '',
   });
 
-  const { complaints, lostItems, broadcasts, addComplaint, assignComplaint, resolveComplaint, addLostItem, claimLostItem, addBroadcast } = useStore();
+  const { complaints, lostItems, broadcasts, recentlyProcessed, addComplaint, assignComplaint, resolveComplaint, addLostItem, claimLostItem, addBroadcast, clearRecentlyProcessed } = useStore();
+
+  useEffect(() => {
+    if (recentlyProcessed.length > 0) {
+      const latest = recentlyProcessed[0];
+      if (latest.type === 'complaint' && activeTab === 'complaints') {
+        const complaint = complaints.find(c => c.content.includes(latest.content.replace('投诉 - ', '')));
+        if (complaint) setRecentlyHighlighted(complaint.id);
+      } else if (latest.type === 'lostitem' && activeTab === 'lostitems') {
+        const item = lostItems.find(l => l.name.includes(latest.content.replace('遗失物品 - ', '')));
+        if (item) setRecentlyHighlighted(item.id);
+      } else if (latest.type === 'broadcast' && activeTab === 'broadcasts') {
+        const broadcast = broadcasts.find(b => b.content.includes(latest.content.replace('广播 - ', '')));
+        if (broadcast) setRecentlyHighlighted(broadcast.id);
+      }
+      
+      const timer = setTimeout(() => setRecentlyHighlighted(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [recentlyProcessed, activeTab]);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === 'complaints') {
+      const latestComplaint = recentlyProcessed.find(p => p.type === 'complaint');
+      if (latestComplaint) {
+        const complaint = complaints.find(c => c.content.includes(latestComplaint.content.replace('投诉 - ', '')));
+        if (complaint) setRecentlyHighlighted(complaint.id);
+      }
+    } else if (tab === 'lostitems') {
+      const latestLostItem = recentlyProcessed.find(p => p.type === 'lostitem');
+      if (latestLostItem) {
+        const item = lostItems.find(l => l.name.includes(latestLostItem.content.replace('遗失物品 - ', '')));
+        if (item) setRecentlyHighlighted(item.id);
+      }
+    } else if (tab === 'broadcasts') {
+      const latestBroadcast = recentlyProcessed.find(p => p.type === 'broadcast');
+      if (latestBroadcast) {
+        const broadcast = broadcasts.find(b => b.content.includes(latestBroadcast.content.replace('广播 - ', '')));
+        if (broadcast) setRecentlyHighlighted(broadcast.id);
+      }
+    }
+  };
 
   const complaintTableData = complaints.map(complaint => ({
     id: complaint.id,
@@ -29,6 +72,27 @@ export default function FeedbackManagement() {
     status: <Badge status={complaint.status} type="complaint" />,
     assignee: complaint.assigneeName || '待分派',
     createdAt: complaint.createdAt,
+    isHighlighted: recentlyHighlighted === complaint.id,
+  }));
+
+  const lostItemTableData = lostItems.map(item => ({
+    id: item.id,
+    name: item.name,
+    userName: item.userName,
+    description: item.description,
+    location: item.location,
+    status: <Badge status={item.status} type="lostitem" />,
+    createdAt: item.createdAt,
+    isHighlighted: recentlyHighlighted === item.id,
+  }));
+
+  const broadcastTableData = broadcasts.map(broadcast => ({
+    id: broadcast.id,
+    content: broadcast.content,
+    area: broadcast.area,
+    operatorName: broadcast.operatorName,
+    broadcastAt: broadcast.broadcastAt,
+    isHighlighted: recentlyHighlighted === broadcast.id,
   }));
 
   const complaintColumns = [
@@ -39,16 +103,6 @@ export default function FeedbackManagement() {
     { key: 'createdAt', label: '创建时间', align: 'left' as const },
   ];
 
-  const lostItemTableData = lostItems.map(item => ({
-    id: item.id,
-    name: item.name,
-    userName: item.userName,
-    description: item.description,
-    location: item.location,
-    status: <Badge status={item.status} type="lostitem" />,
-    createdAt: item.createdAt,
-  }));
-
   const lostItemColumns = [
     { key: 'name', label: '物品名称', align: 'left' as const },
     { key: 'userName', label: '登记人', align: 'left' as const },
@@ -57,14 +111,6 @@ export default function FeedbackManagement() {
     { key: 'status', label: '状态', align: 'center' as const },
     { key: 'createdAt', label: '登记时间', align: 'left' as const },
   ];
-
-  const broadcastTableData = broadcasts.map(broadcast => ({
-    id: broadcast.id,
-    content: broadcast.content,
-    area: broadcast.area,
-    operatorName: broadcast.operatorName,
-    broadcastAt: broadcast.broadcastAt,
-  }));
 
   const broadcastColumns = [
     { key: 'content', label: '广播内容', align: 'left' as const },
@@ -132,6 +178,7 @@ export default function FeedbackManagement() {
         content: formData.content,
         status: 'pending',
       });
+      setActiveTab('complaints');
     } else if (modalType === 'lostitem') {
       addLostItem({
         userId: 'new_user',
@@ -141,6 +188,7 @@ export default function FeedbackManagement() {
         location: formData.location,
         status: 'unclaimed',
       });
+      setActiveTab('lostitems');
     } else {
       addBroadcast({
         content: formData.content,
@@ -149,6 +197,7 @@ export default function FeedbackManagement() {
         operatorId: 'admin',
         operatorName: '张管理员',
       });
+      setActiveTab('broadcasts');
     }
     setFormData({ userName: '', content: '', name: '', description: '', location: '', area: '全景区', assigneeId: '', assigneeName: '' });
     setShowModal(false);
@@ -163,6 +212,45 @@ export default function FeedbackManagement() {
 
   return (
     <div className="p-6 space-y-6">
+      {recentlyProcessed.length > 0 && (
+        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-blue-600" />
+              <span className="font-semibold text-blue-800">最近处理</span>
+            </div>
+            <button 
+              onClick={clearRecentlyProcessed}
+              className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+              title="清除记录"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {recentlyProcessed.slice(0, 5).map((item, index) => (
+              <div 
+                key={item.id}
+                className={`flex items-center gap-3 p-2 rounded-lg transition-all ${
+                  index === 0 ? 'bg-white shadow-sm animate-pulse' : 'bg-white/50'
+                }`}
+              >
+                <Clock className="w-4 h-4 text-slate-400" />
+                <span className="text-sm text-slate-700 flex-1">{item.content}</span>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  item.action.includes('分派') ? 'bg-blue-100 text-blue-700' :
+                  item.action.includes('解决') || item.action.includes('认领') ? 'bg-green-100 text-green-700' :
+                  'bg-orange-100 text-orange-700'
+                }`}>
+                  {item.action}
+                </span>
+                <span className="text-xs text-slate-400">{item.timestamp}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">游客反馈</h1>
@@ -195,36 +283,52 @@ export default function FeedbackManagement() {
 
       <div className="flex gap-2 bg-white p-1 rounded-lg shadow-sm inline-flex">
         <button
-          onClick={() => setActiveTab('complaints')}
+          onClick={() => handleTabChange('complaints')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
             activeTab === 'complaints' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <MessageCircle className="w-4 h-4" />
           <span>投诉处理</span>
+          {recentlyProcessed.some(p => p.type === 'complaint') && (
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          )}
         </button>
         <button
-          onClick={() => setActiveTab('lostitems')}
+          onClick={() => handleTabChange('lostitems')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
             activeTab === 'lostitems' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Package className="w-4 h-4" />
           <span>遗失物品</span>
+          {recentlyProcessed.some(p => p.type === 'lostitem') && (
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          )}
         </button>
         <button
-          onClick={() => setActiveTab('broadcasts')}
+          onClick={() => handleTabChange('broadcasts')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
             activeTab === 'broadcasts' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Radio className="w-4 h-4" />
           <span>应急广播</span>
+          {recentlyProcessed.some(p => p.type === 'broadcast') && (
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          )}
         </button>
       </div>
 
       {activeTab === 'complaints' && (
-        <Table columns={complaintColumns} data={complaintTableData} rowActions={complaintActions} />
+        <div className="relative">
+          <Table columns={complaintColumns} data={complaintTableData} rowActions={complaintActions} />
+          {recentlyHighlighted && (
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute border-2 border-blue-500 rounded-xl animate-ping w-full h-full opacity-50" />
+            </div>
+          )}
+        </div>
       )}
 
       {activeTab === 'lostitems' && (
