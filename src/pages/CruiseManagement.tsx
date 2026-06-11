@@ -321,10 +321,15 @@ export default function CruiseManagement() {
                   min="0"
                   max={(() => {
                     const cruise = cruises.find(c => c.id === formData.cruiseId);
-                    return cruise ? getCruiseTotalCapacity(cruise.id).available : 0;
+                    return cruise ? cruise.capacity : 0;
                   })()}
                   value={formData.passengerCount}
-                  onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
+                    const cruise = cruises.find(c => c.id === formData.cruiseId);
+                    const max = cruise ? cruise.capacity : 0;
+                    setFormData({...formData, passengerCount: Math.min(value, max)});
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
                   placeholder="输入本班次预约人数"
                 />
@@ -379,8 +384,13 @@ export default function CruiseManagement() {
               <input 
                 type="number" 
                 min="0"
+                max={getCruiseAvailableSeats(editingId).available}
                 value={formData.passengerCount}
-                onChange={(e) => setFormData({...formData, passengerCount: parseInt(e.target.value) || 0})}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 0;
+                  const max = getCruiseAvailableSeats(editingId).available;
+                  setFormData({...formData, passengerCount: Math.min(value, max)});
+                }}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
                 placeholder="输入增加的人数"
               />

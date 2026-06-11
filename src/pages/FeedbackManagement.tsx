@@ -30,10 +30,13 @@ export default function FeedbackManagement() {
     if (recentlyProcessed.length > 0) {
       const latest = recentlyProcessed[0];
       if (latest.type === 'complaint') {
+        setActiveTab('complaints');
         setHighlightedId(latest.recordId);
       } else if (latest.type === 'lostitem') {
+        setActiveTab('lostitems');
         setHighlightedId(latest.recordId);
       } else if (latest.type === 'broadcast') {
+        setActiveTab('broadcasts');
         setHighlightedId(latest.recordId);
       }
       
@@ -79,7 +82,7 @@ export default function FeedbackManagement() {
     ),
     userName: item.userName,
     description: (
-      <div className="max-w-xs truncate" title={item.description}>
+      <div className="max-w-xs" title={item.description}>
         {item.description}
       </div>
     ),

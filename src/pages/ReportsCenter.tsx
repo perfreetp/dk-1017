@@ -21,6 +21,16 @@ export default function ReportsCenter() {
   const filteredWorkOrders = getFilteredWorkOrders();
   const filteredBookings = getFilteredBookings();
 
+  const filteredDailyReports = isAreaAdmin && userArea !== 'all'
+    ? dailyReports.map(report => ({
+        ...report,
+        bookings: filteredBookings.filter(b => b.visitDate === report.date).length,
+        complaints: filteredComplaints.length,
+        workOrdersCompleted: filteredWorkOrders.filter(w => w.status === 'completed').length,
+        totalVisitors: filteredFlowData.reduce((sum, f) => sum + f.visitorCount, 0),
+      }))
+    : dailyReports;
+
   const totalVisitors = filteredFlowData.reduce((sum, item) => sum + item.visitorCount, 0);
   const totalCapacity = filteredFlowData.reduce((sum, item) => sum + item.capacity, 0);
   const occupancyRate = totalCapacity > 0 ? ((totalVisitors / totalCapacity) * 100).toFixed(1) : '0';
@@ -201,7 +211,7 @@ export default function ReportsCenter() {
               </h2>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dailyReports}>
+                  <LineChart data={filteredDailyReports}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="date" stroke="#6b7280" />
                     <YAxis stroke="#6b7280" />
@@ -216,7 +226,7 @@ export default function ReportsCenter() {
               <h2 className="text-lg font-semibold text-slate-800 mb-4">预约与投诉统计</h2>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyReports}>
+                  <BarChart data={filteredDailyReports}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="date" stroke="#6b7280" />
                     <YAxis stroke="#6b7280" />
@@ -232,7 +242,7 @@ export default function ReportsCenter() {
               <h2 className="text-lg font-semibold text-slate-800 mb-4">工单完成情况</h2>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyReports}>
+                  <BarChart data={filteredDailyReports}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="date" stroke="#6b7280" />
                     <YAxis stroke="#6b7280" />

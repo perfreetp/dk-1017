@@ -398,9 +398,18 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
 
-  addLostItem: (item) => set((state) => ({
-    lostItems: [...state.lostItems, { ...item, id: generateId(), createdAt: new Date().toLocaleString() }],
-  })),
+  addLostItem: (item) => {
+    const itemId = generateId();
+    get().addRecentlyProcessed({
+      type: 'lostitem',
+      recordId: itemId,
+      content: `遗失物品 - ${item.name}: ${item.description}`,
+      action: '已登记',
+    });
+    set((state) => ({
+      lostItems: [...state.lostItems, { ...item, id: itemId, createdAt: new Date().toLocaleString() }],
+    }));
+  },
 
   claimLostItem: (id) => {
     const state = get();
@@ -449,13 +458,17 @@ export const useStore = create<AppState>((set, get) => ({
       ? state.flowData.filter(f => f.areaName === state.userArea)
       : state.flowData;
     const filteredComplaints = isAreaAdmin && state.userArea !== 'all'
-      ? state.complaints
+      ? state.complaints.filter(c => c.userName.includes(state.userArea))
       : state.complaints;
     const filteredWorkOrders = isAreaAdmin && state.userArea !== 'all'
-      ? state.workOrders
+      ? state.workOrders.filter(w => w.location.includes(state.userArea))
       : state.workOrders;
+    const filteredBookings = isAreaAdmin && state.userArea !== 'all'
+      ? state.bookings.filter(b => b.entryPoint.includes(state.userArea))
+      : state.bookings;
 
     const totalVisitors = filteredFlowData.reduce((sum, f) => sum + f.visitorCount, 0);
+    const today = new Date().toISOString().split('T')[0];
     
     const report = {
       date: new Date().toLocaleDateString('zh-CN'),
@@ -463,7 +476,7 @@ export const useStore = create<AppState>((set, get) => ({
       role: isAreaAdmin ? '片区管理员' : '运营中心',
       summary: {
         totalVisitors,
-        bookings: state.bookings.filter(b => b.visitDate === new Date().toISOString().split('T')[0]).length,
+        bookings: filteredBookings.filter(b => b.visitDate === today).length,
         complaints: filteredComplaints.length,
         workOrdersCompleted: filteredWorkOrders.filter(w => w.status === 'completed').length,
         satisfaction: 4.7,
@@ -472,6 +485,7 @@ export const useStore = create<AppState>((set, get) => ({
         flowData: filteredFlowData,
         complaints: filteredComplaints.slice(0, 10),
         workOrders: filteredWorkOrders.slice(0, 10),
+        bookings: filteredBookings.filter(b => b.visitDate === today).slice(0, 10),
       },
     };
     

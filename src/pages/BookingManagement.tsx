@@ -233,11 +233,17 @@ export default function BookingManagement() {
   };
 
   const availableGuides = guides.filter(g => g.status === 'available');
-  const availableSchedules = cruiseSchedules.filter(s => {
-    if (s.status !== 'scheduled') return false;
-    const seats = getCruiseAvailableSeats(s.id);
-    return seats.available > 0;
-  });
+  const availableSchedules = dispatchType === 'cruise' && selectedBooking 
+    ? cruiseSchedules.filter(s => {
+        if (s.status !== 'scheduled') return false;
+        const seats = getCruiseAvailableSeats(s.id);
+        return seats.available >= (selectedBooking.passengerCount || 1);
+      })
+    : cruiseSchedules.filter(s => {
+        if (s.status !== 'scheduled') return false;
+        const seats = getCruiseAvailableSeats(s.id);
+        return seats.available > 0;
+      });
 
   return (
     <div className="p-6 space-y-6">
