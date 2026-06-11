@@ -1,11 +1,20 @@
 import { useState } from 'react';
-import { Ship, Clock, Navigation, RefreshCw, AlertCircle } from 'lucide-react';
+import { Ship, Clock, Navigation, RefreshCw, AlertCircle, Edit2 } from 'lucide-react';
 import { Badge, Table, Modal } from '../components/Common';
-import { cruises, cruiseSchedules } from '../data/mockData';
+import { useStore } from '../store/useStore';
 
 export default function CruiseManagement() {
   const [activeTab, setActiveTab] = useState('fleet');
   const [showModal, setShowModal] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [editingId, setEditingId] = useState('');
+  const [formData, setFormData] = useState({
+    cruiseId: '',
+    cruiseName: '',
+    departureTime: '',
+  });
+
+  const { cruises, cruiseSchedules, addCruiseSchedule, updateCruiseSchedule, cancelCruiseSchedule } = useStore();
 
   const fleetTableData = cruises.map(cruise => ({
     id: cruise.id,
@@ -36,16 +45,59 @@ export default function CruiseManagement() {
     { key: 'status', label: '状态', align: 'center' as const },
   ];
 
-  const rowActions = () => (
-    <>
-      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="调整班次">
-        <RefreshCw className="w-4 h-4" />
-      </button>
-      <button className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="取消班次">
-        <AlertCircle className="w-4 h-4" />
-      </button>
-    </>
-  );
+  const scheduleActions = (row: Record<string, any>) => {
+    const schedule = cruiseSchedules.find(s => s.id === row.id);
+    if (!schedule) return null;
+    
+    return (
+      <>
+        {schedule.status === 'scheduled' && (
+          <button 
+            onClick={() => {
+              setEditingId(schedule.id);
+              setFormData({ cruiseId: schedule.cruiseId, cruiseName: schedule.cruiseName, departureTime: schedule.departureTime });
+              setEditModal(true);
+            }}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
+            title="调整班次"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+        )}
+        {schedule.status !== 'cancelled' && (
+          <button 
+            onClick={() => cancelCruiseSchedule(schedule.id)}
+            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" 
+            title="取消班次"
+          >
+            <AlertCircle className="w-4 h-4" />
+          </button>
+        )}
+      </>
+    );
+  };
+
+  const handleAddSchedule = () => {
+    const cruise = cruises.find(c => c.id === formData.cruiseId);
+    if (!cruise) return;
+    addCruiseSchedule({
+      cruiseId: formData.cruiseId,
+      cruiseName: cruise.name,
+      departureTime: formData.departureTime,
+      status: 'scheduled',
+    });
+    setFormData({ cruiseId: '', cruiseName: '', departureTime: '' });
+    setShowModal(false);
+  };
+
+  const handleUpdateSchedule = () => {
+    updateCruiseSchedule(editingId, formData.departureTime);
+    setEditModal(false);
+    setEditingId('');
+    setFormData({ cruiseId: '', cruiseName: '', departureTime: '' });
+  };
+
+  const availableCruises = cruises.filter(c => c.status !== 'maintenance');
 
   return (
     <div className="p-6 space-y-6">
@@ -98,7 +150,7 @@ export default function CruiseManagement() {
       )}
 
       {activeTab === 'schedule' && (
-        <Table columns={scheduleColumns} data={scheduleTableData} rowActions={rowActions} />
+        <Table columns={scheduleColumns} data={scheduleTableData} rowActions={scheduleActions} />
       )}
 
       {activeTab === 'location' && (
@@ -131,15 +183,28 @@ export default function CruiseManagement() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">选择游船</label>
-            <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-              {cruises.filter(c => c.status !== 'maintenance').map(cruise => (
-                <option key={cruise.id}>{cruise.name} (载客量: {cruise.capacity})</option>
+            <select 
+              value={formData.cruiseId}
+              onChange={(e) => {
+                const cruise = cruises.find(c => c.id === e.target.value);
+                setFormData({...formData, cruiseId: e.target.value, cruiseName: cruise?.name || ''});
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">请选择游船</option>
+              {availableCruises.map(cruise => (
+                <option key={cruise.id} value={cruise.id}>{cruise.name} (载客量: {cruise.capacity})</option>
               ))}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">发船时间</label>
-            <input type="time" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input 
+              type="time" 
+              value={formData.departureTime}
+              onChange={(e) => setFormData({...formData, departureTime: e.target.value})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+            />
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <button
@@ -148,8 +213,50 @@ export default function CruiseManagement() {
             >
               取消
             </button>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <button 
+              onClick={handleAddSchedule}
+              disabled={!formData.cruiseId || !formData.departureTime}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               确认添加
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={editModal} onClose={() => { setEditModal(false); setEditingId(''); }} title="调整班次时间">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">游船</label>
+            <input 
+              type="text" 
+              value={formData.cruiseName}
+              disabled
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100" 
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">发船时间</label>
+            <input 
+              type="time" 
+              value={formData.departureTime}
+              onChange={(e) => setFormData({...formData, departureTime: e.target.value})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              onClick={() => { setEditModal(false); setEditingId(''); }}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              取消
+            </button>
+            <button 
+              onClick={handleUpdateSchedule}
+              disabled={!formData.departureTime}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              确认调整
             </button>
           </div>
         </div>

@@ -1,12 +1,15 @@
 import { Users, CalendarCheck, AlertTriangle, TrendingUp, MapPin, Clock } from 'lucide-react';
 import { StatCard, WarningCard } from '../components/Common';
-import { flowData, warnings, dailyReports } from '../data/mockData';
+import { useStore } from '../store/useStore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
+  const { flowData, warnings, dailyReports, user } = useStore();
+
   const totalVisitors = flowData.reduce((sum, item) => sum + item.visitorCount, 0);
   const totalCapacity = flowData.reduce((sum, item) => sum + item.capacity, 0);
   const occupancyRate = ((totalVisitors / totalCapacity) * 100).toFixed(1);
+  const todayBookings = dailyReports[dailyReports.length - 1]?.bookings || 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -31,7 +34,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="预约人数"
-          value={2650}
+          value={todayBookings}
           icon={<CalendarCheck className="w-6 h-6 text-white" />}
           trend={{ value: 8.3, isUp: true }}
           color="green"

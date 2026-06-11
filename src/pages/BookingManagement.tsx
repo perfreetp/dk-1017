@@ -1,12 +1,20 @@
 import { useState } from 'react';
 import { Search, Plus, CheckCircle, XCircle, Filter } from 'lucide-react';
 import { Table, Badge, Modal } from '../components/Common';
-import { bookings } from '../data/mockData';
+import { useStore } from '../store/useStore';
 
 export default function BookingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [formData, setFormData] = useState({
+    userName: '',
+    entryPoint: '断桥入口',
+    visitDate: '',
+    timeSlot: '08:00-09:00',
+  });
+
+  const { bookings, verifyBooking, cancelBooking, addBooking } = useStore();
 
   const filteredBookings = bookings.filter(booking => {
     const matchesSearch = booking.entryPoint.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -39,17 +47,37 @@ export default function BookingManagement() {
     return (
       <>
         {booking.status === 'pending' && (
-          <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="核销">
+          <button 
+            onClick={() => verifyBooking(booking.id)}
+            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" 
+            title="核销"
+          >
             <CheckCircle className="w-4 h-4" />
           </button>
         )}
         {booking.status !== 'cancelled' && (
-          <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="取消">
+          <button 
+            onClick={() => cancelBooking(booking.id)}
+            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+            title="取消"
+          >
             <XCircle className="w-4 h-4" />
           </button>
         )}
       </>
     );
+  };
+
+  const handleSubmit = () => {
+    addBooking({
+      userId: 'new_user',
+      entryPoint: formData.entryPoint,
+      visitDate: formData.visitDate || '2024-01-15',
+      timeSlot: formData.timeSlot,
+      status: 'pending',
+    });
+    setFormData({ userName: '', entryPoint: '断桥入口', visitDate: '', timeSlot: '08:00-09:00' });
+    setShowModal(false);
   };
 
   return (
@@ -100,11 +128,21 @@ export default function BookingManagement() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">游客姓名</label>
-            <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="请输入游客姓名" />
+            <input 
+              type="text" 
+              value={formData.userName}
+              onChange={(e) => setFormData({...formData, userName: e.target.value})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+              placeholder="请输入游客姓名" 
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">选择入口</label>
-            <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            <select 
+              value={formData.entryPoint}
+              onChange={(e) => setFormData({...formData, entryPoint: e.target.value})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
               <option>断桥入口</option>
               <option>苏堤入口</option>
               <option>白堤入口</option>
@@ -114,11 +152,20 @@ export default function BookingManagement() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">预约日期</label>
-              <input type="date" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input 
+                type="date" 
+                value={formData.visitDate}
+                onChange={(e) => setFormData({...formData, visitDate: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">时段</label>
-              <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <select 
+                value={formData.timeSlot}
+                onChange={(e) => setFormData({...formData, timeSlot: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
                 <option>08:00-09:00</option>
                 <option>09:00-10:00</option>
                 <option>10:00-11:00</option>
@@ -137,7 +184,10 @@ export default function BookingManagement() {
             >
               取消
             </button>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <button 
+              onClick={handleSubmit}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
               确认预约
             </button>
           </div>

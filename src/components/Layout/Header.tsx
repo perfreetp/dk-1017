@@ -1,20 +1,33 @@
-import { Bell, User, Settings, LogOut } from 'lucide-react';
-import { currentUser } from '../../data/mockData';
+import { Bell, User, Settings, LogOut, Shield } from 'lucide-react';
+import { useStore } from '../../store/useStore';
 
 export default function Header() {
+  const { user, switchRole } = useStore();
+
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm">
       <div className="flex items-center gap-4">
         <span className="text-lg font-semibold text-slate-800">
-          {currentUser.department}
+          {user.department}
         </span>
         <span className="text-sm text-slate-500">|</span>
         <span className="text-sm text-slate-600">
-          欢迎, {currentUser.username}
+          欢迎, {user.username}
         </span>
       </div>
 
       <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-slate-500" />
+          <select
+            value={user.role}
+            onChange={(e) => switchRole(e.target.value as 'admin' | 'area_admin')}
+            className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          >
+            <option value="admin">运营中心</option>
+            <option value="area_admin">片区管理员</option>
+          </select>
+        </div>
         <button className="relative p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
@@ -27,7 +40,7 @@ export default function Header() {
             <User className="w-4 h-4 text-white" />
           </div>
           <button className="flex items-center gap-2 text-slate-600 hover:text-slate-800 transition-colors">
-            <span className="text-sm font-medium">{currentUser.username}</span>
+            <span className="text-sm font-medium">{user.username}</span>
             <LogOut className="w-4 h-4" />
           </button>
         </div>

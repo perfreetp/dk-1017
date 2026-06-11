@@ -1,11 +1,19 @@
 import { useState } from 'react';
-import { MessageSquare, Calendar, Phone, Plus, Edit, CalendarX } from 'lucide-react';
+import { MessageSquare, Calendar, Phone, Plus, Edit2, CalendarX } from 'lucide-react';
 import { Badge, Table, Modal } from '../components/Common';
-import { guides, guideSchedules } from '../data/mockData';
+import { useStore } from '../store/useStore';
 
 export default function GuideManagement() {
   const [activeTab, setActiveTab] = useState('guides');
   const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({
+    guideId: '',
+    guideName: '',
+    date: '',
+    timeSlot: '08:00-12:00',
+  });
+
+  const { guides, guideSchedules, addGuideSchedule, updateGuideStatus, deleteGuideSchedule } = useStore();
 
   const guideTableData = guides.map(guide => ({
     id: guide.id,
@@ -45,27 +53,59 @@ export default function GuideManagement() {
     { key: 'timeSlot', label: '时段', align: 'center' as const },
   ];
 
-  const guideActions = () => (
+  const guideActions = (row: Record<string, any>) => {
+    const guide = guides.find(g => g.id === row.id);
+    if (!guide) return null;
+    
+    return (
+      <>
+        <button 
+          onClick={() => {
+            const newStatus: Guide['status'] = guide.status === 'available' ? 'busy' : guide.status === 'busy' ? 'off' : 'available';
+            updateGuideStatus(guide.id, newStatus);
+          }}
+          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
+          title={guide.status === 'available' ? '设置为忙碌' : guide.status === 'busy' ? '设置为休息' : '设置为空闲'}
+        >
+          <Edit2 className="w-4 h-4" />
+        </button>
+        <button 
+          onClick={() => updateGuideStatus(guide.id, 'off')}
+          className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" 
+          title="请假"
+        >
+          <CalendarX className="w-4 h-4" />
+        </button>
+      </>
+    );
+  };
+
+  const scheduleActions = (row: Record<string, any>) => (
     <>
-      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
-        <Edit className="w-4 h-4" />
-      </button>
-      <button className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="请假">
+      <button 
+        onClick={() => deleteGuideSchedule(row.id)}
+        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+        title="删除排班"
+      >
         <CalendarX className="w-4 h-4" />
       </button>
     </>
   );
 
-  const scheduleActions = () => (
-    <>
-      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="调整">
-        <Edit className="w-4 h-4" />
-      </button>
-      <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="删除">
-        <CalendarX className="w-4 h-4" />
-      </button>
-    </>
-  );
+  const handleAddSchedule = () => {
+    const guide = guides.find(g => g.id === formData.guideId);
+    if (!guide) return;
+    addGuideSchedule({
+      guideId: formData.guideId,
+      guideName: guide.name,
+      date: formData.date || '2024-01-15',
+      timeSlot: formData.timeSlot,
+    });
+    setFormData({ guideId: '', guideName: '', date: '', timeSlot: '08:00-12:00' });
+    setShowModal(false);
+  };
+
+  const availableGuides = guides.filter(g => g.status !== 'off');
 
   return (
     <div className="p-6 space-y-6">
@@ -116,20 +156,37 @@ export default function GuideManagement() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">选择讲解员</label>
-            <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-              {guides.filter(g => g.status !== 'off').map(guide => (
-                <option key={guide.id}>{guide.name}</option>
+            <select 
+              value={formData.guideId}
+              onChange={(e) => {
+                const guide = guides.find(g => g.id === e.target.value);
+                setFormData({...formData, guideId: e.target.value, guideName: guide?.name || ''});
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">请选择讲解员</option>
+              {availableGuides.map(guide => (
+                <option key={guide.id} value={guide.id}>{guide.name}</option>
               ))}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">日期</label>
-              <input type="date" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input 
+                type="date" 
+                value={formData.date}
+                onChange={(e) => setFormData({...formData, date: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">时段</label>
-              <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <select 
+                value={formData.timeSlot}
+                onChange={(e) => setFormData({...formData, timeSlot: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
                 <option>08:00-12:00</option>
                 <option>13:00-17:00</option>
                 <option>09:00-13:00</option>
@@ -144,7 +201,11 @@ export default function GuideManagement() {
             >
               取消
             </button>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <button 
+              onClick={handleAddSchedule}
+              disabled={!formData.guideId}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               确认排班
             </button>
           </div>
@@ -153,3 +214,10 @@ export default function GuideManagement() {
     </div>
   );
 }
+
+type Guide = {
+  id: string;
+  name: string;
+  phone: string;
+  status: 'available' | 'busy' | 'off';
+};

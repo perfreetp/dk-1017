@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { BarChart3, Store, Users, TrendingUp, Download, Calendar } from 'lucide-react';
+import { BarChart3, Store, Users, TrendingUp, Download, Calendar, Shield } from 'lucide-react';
 import { Table } from '../components/Common';
-import { merchants, satisfactionData, dailyReports, flowData } from '../data/mockData';
+import { useStore } from '../store/useStore';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 export default function ReportsCenter() {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedDate, setSelectedDate] = useState('2024-01-15');
+  const { merchants, satisfactionData, dailyReports, flowData, exportDailyReport, user, switchRole } = useStore();
 
   const merchantTableData = merchants.map(merchant => ({
     id: merchant.id,
@@ -73,6 +74,8 @@ export default function ReportsCenter() {
 
   const COLORS = ['#1E88E5', '#43A047', '#FB8C00', '#E53935', '#8E24AA'];
 
+  const hasAdminAccess = user.role === 'admin';
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -90,10 +93,24 @@ export default function ReportsCenter() {
               className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          <button 
+            onClick={exportDailyReport}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
             <Download className="w-4 h-4" />
             <span>导出日报</span>
           </button>
+          <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
+            <Shield className="w-4 h-4 text-slate-500" />
+            <select
+              value={user.role}
+              onChange={(e) => switchRole(e.target.value as 'admin' | 'area_admin')}
+              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="admin">运营中心</option>
+              <option value="area_admin">片区管理员</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -107,15 +124,17 @@ export default function ReportsCenter() {
           <BarChart3 className="w-4 h-4" />
           <span>数据概览</span>
         </button>
-        <button
-          onClick={() => setActiveTab('merchants')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'merchants' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Store className="w-4 h-4" />
-          <span>商户状态</span>
-        </button>
+        {hasAdminAccess && (
+          <button
+            onClick={() => setActiveTab('merchants')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+              activeTab === 'merchants' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Store className="w-4 h-4" />
+            <span>商户状态</span>
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('limits')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
@@ -209,8 +228,14 @@ export default function ReportsCenter() {
         </div>
       )}
 
-      {activeTab === 'merchants' && (
+      {activeTab === 'merchants' && hasAdminAccess && (
         <Table columns={merchantColumns} data={merchantTableData} />
+      )}
+
+      {activeTab === 'merchants' && !hasAdminAccess && (
+        <div className="bg-white rounded-xl p-8 shadow-sm text-center">
+          <p className="text-slate-500">片区管理员无商户状态查看权限</p>
+        </div>
       )}
 
       {activeTab === 'limits' && (
